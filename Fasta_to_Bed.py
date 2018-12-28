@@ -22,12 +22,11 @@ def main():
     parser.add_argument('-o', '--output_file', type=str, required=True, help='Path to an output file to be created' )
     args = parser.parse_args()
 
-    if args.output_file is None:
-        opf = sys.stdout
-    else:
-        opf = open ( args.output_file, 'w')
-
-    for line in open(args.input_file):
+    with open(args.input_file) as f:
+        file = f.readlines()
+    opf = open(args.output_file,'w')
+    
+    for line in file:
         if line.startswith(">"):
             chrom = line.split(">")[1].split(":")[0]
             chromStart = line.split(">")[1].split(":")[1].split("-")[0]
@@ -35,7 +34,7 @@ def main():
             strand = line.split(">")[1].split(":")[1].split("-")[1].split("(")[1].split(")")[0]
             if strand != '+':
                 strand = '-'
-        opf.write("{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n" .format(chrom,chromStart,chromEnd,'Default','0',strand))
+            opf.write("{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n" .format(chrom,chromStart,chromEnd,'Default','0',strand))
 
     opf.close()
 
