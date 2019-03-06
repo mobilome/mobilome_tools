@@ -1,3 +1,3 @@
 # Naisu_Scripts
 
-The scripts write for practice.
+The scripts write for daily use.
