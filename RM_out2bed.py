@@ -14,6 +14,7 @@ import argparse
 
 
 def main():
+    parser = argparse.ArgumentParser( description='RMout_file coverter to Bed format')
 
     ## -i and -o for input/output.
     parser.add_argument('-i', '--input_file', type=str, required=True, help='Path to an input file to be read' )
