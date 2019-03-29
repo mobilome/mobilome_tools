@@ -47,7 +47,7 @@ def main():
             if repeat_family == args.repeat_class:
                 if strand == "C":
                     strand = "-"
-                opf.write("{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n" .format(chrom,chromStart,chromEnd,'Default','0',strand))
+                opf.writelines("{0}\t{1}\t{2}\t{3}\t{4}\t{5}\n" .format(query_sequence,piq_begin,piq_end,match_repeat,SW_score,strand))
 
     opf.close()
 
