@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+# -*- coding: UTF-8 -*-
+
+with open("library.xls","r") as f: 
+    File =f.readlines()
+OutFile = open("library.fasta","w") 
+    
+for line in File:
+    Phrase = line.strip().split("\t")
+    Name = "%s|%s|%s" % (Phrase[0],Phrase[1],Phrase[2])
+    Seq = Phrase[3]
+    OutFile.write(">"+ Name +"\n"+Seq+"\n")
+OutFile.close()
