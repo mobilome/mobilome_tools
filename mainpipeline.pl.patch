@@ -1,0 +1,15 @@
+4a5
+> use Parallel::ForkManager;
+25c26,27
+< my $CPU=$ARGV[13];
+---
+> my $CPU=2;
+> my $max_process = $ARGV[13];
+87a90
+> my $pm = Parallel::ForkManager->new($max_process);
+88a92
+> 	$pm->start and next;
+208a213
+> $pm->finish;
+209a215
+> $pm->wait_all_children;
