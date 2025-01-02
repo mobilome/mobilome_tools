@@ -1,3 +1,3 @@
-# Naisu_Scripts
+# mobiome_tools
 
-The scripts write for daily use.
+Scripts customized for the mobilome laboratory.
