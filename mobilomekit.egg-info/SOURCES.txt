@@ -1,0 +1,7 @@
+README.md
+setup.py
+mobilomekit.egg-info/PKG-INFO
+mobilomekit.egg-info/SOURCES.txt
+mobilomekit.egg-info/dependency_links.txt
+mobilomekit.egg-info/entry_points.txt
+mobilomekit.egg-info/top_level.txt

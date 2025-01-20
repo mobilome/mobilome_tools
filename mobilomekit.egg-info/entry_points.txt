@@ -1,0 +1,3 @@
+[console_scripts]
+mobilomekit = mobilomekit:main
+
