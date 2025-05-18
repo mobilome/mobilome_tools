@@ -29,9 +29,10 @@ def create_slurm_script(args,path):
 #SBATCH --job-name={path.name}
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task={str(args.num_threads)}
 #SBATCH --output=/dev/null
-#SBATCH --array=1-{job_number}%48
+#SBATCH --part={args.partition}
+#SBATCH --array=1-{job_number}%60
 
 PERFIX="{args.prefix}"
 CATEGORY="{path.parent.name}/{path.name}"
@@ -58,9 +59,9 @@ if [ ! -f "$GENOME_FILE" ]; then
 fi
 
 #运行mobilome_tn_mining
-echo mobilome_tn_mining -query {args.dde} -db ${{GENOME_FILE%.fna}} -name_id {Path(path,'name2id.txt')}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num 8 -tblastn_option {args.blast_options} > $LOGDIR/$(basename "$GENOME_FILE" .fna).log
+echo mobilome_tn_mining -query {args.dde} -db ${{GENOME_FILE%.fna}} -name_id {Path(path,'name2id.txt')}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num {args.num_threads} -tblastn_option {args.blast_options} > $LOGDIR/$(basename "$GENOME_FILE" .fna).log
 
-mobilome_tn_mining -query {args.dde} -db ${{GENOME_FILE%.fna}} -name_id {Path(path,'name2id.txt')}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num 8 -tblastn_option {args.blast_options} >> $LOGDIR/$(basename "$GENOME_FILE" .fna).log
+mobilome_tn_mining -query {args.dde} -db ${{GENOME_FILE%.fna}} -name_id {Path(path,'name2id.txt')}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num {args.num_threads} -tblastn_option {args.blast_options} >> $LOGDIR/$(basename "$GENOME_FILE" .fna).log
 """
 
     # 将内容写入文件
@@ -70,9 +71,6 @@ mobilome_tn_mining -query {args.dde} -db ${{GENOME_FILE%.fna}} -name_id {Path(pa
 
     print(f"总任务数: {job_number}")
     print(f"SLURM任务文件位置: {slurm_job_file}")
-    print(f"DDE文件: {args.dde}")
-    print(f"左侧延伸长度: {args.left_len},右侧延伸长度: {args.right_len}")
-    print(f"blastn参数: {args.blast_options}")
     print(f"结果输出目录: {Path.home()}/{args.prefix}/{path.parent.name}/{path.name}")
     print("请检查脚本内容，然后使用以下命令提交作业:")
     print(f"sbatch {slurm_job_file}")
@@ -112,6 +110,18 @@ def main():
         default='.',
         help='Output file directory'
     )
+    parser.add_argument(
+        '--partition',
+        default='mshpc1',
+        help='Specify the HPC partition to use (default: mshpc1)'
+    )
+    parser.add_argument(
+        '--num_threads',
+        type=int,
+        default=8,
+        help='Number of threads (CPUs) to use in the BLAST search (default: 8)'
+    )
+
 
     args = parser.parse_args()
 
@@ -119,11 +129,20 @@ def main():
     directories = sorted([child for child in Path("/home/bpool/storage/eukaryotes_genome").iterdir() if child.is_dir()])
 
     print(f"\n{'*' * 20}共生成 {len(directories)} 个SLURM任务文件{'*' * 20}")
-
+    print(f"tn_mining参数:")
+    print(f"DDE文件: {args.dde}")
+    print(f"左侧延伸长度: {args.left_len},右侧延伸长度: {args.right_len}")
+    print(f"blastn参数: {args.blast_options}")
 
     for index, directory in enumerate(directories, start=1):
         print(f"\n{'=' * 20}第{index}个SLURM任务文件信息{'=' * 20}")
+
         create_slurm_script(args, Path(directory))
+    
+    files = [f'sbatch {file}' for file in Path(args.outdir).iterdir() if file.is_file()]
+    with open(Path(Path(args.outdir),'submit_all_jobs.sh'),'w') as f:
+        f.writelines('\n'.join(files))
+    print(f"\n如果提交全部任务，使用以下命令:\nbash {Path(Path(args.outdir),'submit_all_jobs.sh')} ")
 
 
 if __name__ == "__main__":
