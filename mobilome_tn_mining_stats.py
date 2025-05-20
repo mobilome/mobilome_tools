@@ -17,6 +17,7 @@ from pathlib import Path
 from Bio import SeqIO
 import pandas as pd
 from typing import List, Dict, Tuple, Optional
+from collections import defaultdict
 
 def calculate_statistics(lengths: List[int]) -> Tuple[int, int, int]:
     """Calculate min, max, and average of lengths."""
@@ -172,7 +173,20 @@ def run_ORFfinder(fasta_folder, results_dir: Path, args):
         if Path(outfile).stat().st_size == 0:
             outfile.unlink()
             continue 
-        seqnames = {record.id.split("_")[1].split("(")[0] for record in SeqIO.parse(outfile, "fasta")}
+        #seqnames = {record.id.split("_")[1].split("(")[0] for record in SeqIO.parse(outfile, "fasta") }
+        seqs_dict = defaultdict(list)
+        for record in SeqIO.parse(outfile, "fasta"):
+            seqname = record.id.split("_")[1].split("(")[0]
+            seqs_dict[seqname].append(len(record.seq)*3)
+        filter_seq_dict = {}
+        for key, value in seqs_dict.items():
+            # 确保值是列表且至少包含2个数字
+            if not isinstance(value, list) or len(value) < args.min_num_orf:
+                continue
+
+            print(key,value)
+            filter_seq_dict[key] = value
+        #print(seqs_dict)
         # # Find matching sequences in original file
         # sequences = []
         # for record in SeqIO.parse(fasta_file, "fasta"):
@@ -182,7 +196,7 @@ def run_ORFfinder(fasta_folder, results_dir: Path, args):
         #     filter_seq = Path(orf_outdir,fasta_file.name)
         #     SeqIO.write(sequences, filter_seq, "fasta")
         #     orf_stats.append({"filename":fasta_file.name, orfml:len(seqnames)})
-        orf_stats.append({"filename":fasta_file.name, orfml:len(seqnames)})
+        orf_stats.append({"filename":fasta_file.name, orfml:len(filter_seq_dict)})
     merge_results = pd.merge(fasta_df, pd.DataFrame(orf_stats), on='filename')
     merge_results['percent'] = (merge_results[orfml] / merge_results['num_sequences']).round(2)
     if args.min_perc:
@@ -212,7 +226,8 @@ def main():
     parser.add_argument('-d', "--results_dir", type=str, required=True, help="Path to the mobilome_tn_mining results directory")
     parser.add_argument("--min_copy", type=int, required=False, help="Minimum copy number filter")
     parser.add_argument("--max_copy", type=int, required=False, help="Maximum copy number filter")
-    parser.add_argument("--min_orf", type=int, required=False, default=0, help="Minimal length of the ORF (nt)")
+    parser.add_argument("--min_len_orf", type=int, required=False, default=0, help="Minimal length of the ORF (nt)")
+    parser.add_argument("--min_num_orf", type=int, required=False, default=0, help="Minimal number of the ORF (nt)")
     parser.add_argument("--min_perc", type=float, required=False, default=0, help="Minimum percentage of the sequence that contains an ORF")
 
     # Parse arguments
@@ -225,7 +240,7 @@ def main():
 
     fasta_folder = Path(results_dir, 'fasta')
 
-    if args.min_orf:
+    if args.min_len_orf:
         orf_stats_df = run_ORFfinder(fasta_folder, results_dir, args)
         #合并统计结果
         #merge_results = pd.merge(fasta_df, orf_stats_df, on='filename')
