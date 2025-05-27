@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+# -*- encoding: utf-8 -*-
+'''
+@File    :   mobilome_hmmsearch_tblout2bed
+@Time    :   2021/12/12 18:54:56
+@Author  :   Naisu Yang 
+@Version :   1.0
+@Contact :   3298990@qq.com
+'''
+
+# here put the import lib
+import os
+import sys
+import time
+import argparse
+
+def main():
+    parser = argparse.ArgumentParser( description='将蛋白bed位置转换成DNA位置')
+    parser.add_argument('-b', '--aabed_file', type=str, required=True, help='AA bed file' )
+    parser.add_argument('-g', '--genome_info', type=str, required=True, help='基因组染色体长度信息' )
+    parser.add_argument('-o', '--dnabed_file', type=str, required=True, help='DNA bed file' )
+    args = parser.parse_args()
+    fasta_len = {}
+    with open(args.genome_info) as f:
+        for line in f:
+            acc = line.split()[0]
+            length = int(line.split()[1])
+            fasta_len[acc] = length
+            
+    with open(args.aabed_file) as f, open(args.dnabed_file,'w') as output:
+        for line in f:
+            coloumn1 = line.split()[0]
+            acc = coloumn1.split()[0][:-2]
+            if acc in fasta_len:
+                acc_len = fasta_len[acc]
+                strand = int(coloumn1.split()[0][-1])
+                start_pos = int(line.split()[1]) * 3 + (strand - 1)
+                end_pos = int(line.split()[2]) * 3 + (strand - 1)
+                if strand < 4:
+                    strand = '+'
+                else:
+                    start_pos = acc_len - int(line.split()[2]) * 3 + 1
+                    end_pos = acc_len - int(line.split()[1]) * 3 + 1
+                    strand = '-'
+                domian = line.split()[3]
+                dnabed = f'{acc}\t{start_pos}\t{end_pos}\t{domian}\t{acc_len}\t{strand}\n'
+                output.write(dnabed)
+                #bed 格式
+                #chrom chromStart chromEnd name score strand
+            else:
+                print(f'skip {acc}')
+
+
+if __name__ == '__main__':
+    main()
