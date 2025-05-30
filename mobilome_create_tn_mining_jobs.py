@@ -10,7 +10,7 @@
 
 # here put the import lib
 
-import os
+import shutil
 import argparse
 from pathlib import Path
 
@@ -25,6 +25,11 @@ def count_lines(filename):
 def create_slurm_script(args,path):
     GCA_list = Path(path,'GCA.list')
     job_number = count_lines(GCA_list)
+    if path.parent.name == "eukaryotes_genome":
+        GENOMEDIR = f"{path.parent.name}/{path.name}" 
+    else:
+        GENOMEDIR  = f"{path.name}" 
+        pass
     slurm_script_content = f"""#!/bin/bash
 #SBATCH --job-name={path.name}
 #SBATCH --nodes=1
@@ -35,10 +40,10 @@ def create_slurm_script(args,path):
 #SBATCH --array=1-{job_number}%60
 
 PERFIX="{args.prefix}"
-CATEGORY="{path.parent.name}/{path.name}"
+GENOMEDIR ="{GENOMEDIR}"
 
 #输出目录，默认家目录下的PERFIX
-OUTPUT="$HOME/$PERFIX/$CATEGORY"
+OUTPUT="$HOME/$PERFIX/$GENOMEDIR "
 FASTADIR="$OUTPUT/fasta"
 LOGDIR="$OUTPUT/logs"
 TMPDIR="$OUTPUT/tmpdir"
@@ -59,9 +64,9 @@ if [ ! -f "$GENOME_FILE" ]; then
 fi
 
 #运行mobilome_tn_mining
-echo mobilome_tn_mining -query {args.dde} -db ${{GENOME_FILE%.fna}} -name_id {Path(path,'name2id.txt')}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num {args.num_threads} -tblastn_option {args.blast_options} > $LOGDIR/$(basename "$GENOME_FILE" .fna).log
+echo mobilome_tn_mining -query {Path(args.dde).resolve()} -db ${{GENOME_FILE%.fna}} -name_id {Path(path,'name2id.txt').resolve()}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num {args.num_threads} -tblastn_option {args.blast_options} > $LOGDIR/$(basename "$GENOME_FILE" .fna).log
 
-mobilome_tn_mining -query {args.dde} -db ${{GENOME_FILE%.fna}} -name_id {Path(path,'name2id.txt')}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num {args.num_threads} -tblastn_option {args.blast_options} >> $LOGDIR/$(basename "$GENOME_FILE" .fna).log
+mobilome_tn_mining -query {Path(args.dde).resolve()} -db ${{GENOME_FILE%.fna}} -name_id {Path(path,'name2id.txt').resolve()}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num {args.num_threads} -tblastn_option {args.blast_options} >> $LOGDIR/$(basename "$GENOME_FILE" .fna).log
 """
 
     # 将内容写入文件
@@ -78,6 +83,13 @@ mobilome_tn_mining -query {args.dde} -db ${{GENOME_FILE%.fna}} -name_id {Path(pa
 def main():
     parser = argparse.ArgumentParser(description='Generate SLURM submission script for mobilome_tn_mining pipeline')
 
+    parser.add_argument(
+        "--genome",
+        type=str,
+        choices=["all", "eukaryota", "archaea", "bacteria", "viruses"],
+        required=True,
+        help="Specify the genome type: all, eukaryota, archaea, bacteria, or viruses"
+    )
     parser.add_argument(
         '--prefix',
         required=True,
@@ -125,8 +137,24 @@ def main():
 
     args = parser.parse_args()
 
+    # 根据参数调用不同的函数
+    if args.genome == "all":
+        directories = sorted([child for child in Path("/home/bpool/storage/eukaryotes_genome").iterdir() if child.is_dir()])
+        directories.append(Path("/home/bpool/storage/archaea-genome"))
+        directories.append(Path("/home/bpool/storage/bacteria-genome"))
+        directories.append(Path("/home/bpool/storage/viruses-genome"))
+    elif args.genome == "eukaryota":
+        directories = sorted([child for child in Path("/home/bpool/storage/eukaryotes_genome").iterdir() if child.is_dir()])
+    elif args.genome == "archaea":
+        directories = [Path("/home/bpool/storage/archaea-genome")]
+    elif args.genome == "bacteria":
+        directories = [Path("/home/bpool/storage/bacteria-genome")]
+    elif args.genome == "viruses":
+        directories = [Path("/home/bpool/storage/viruses-genome")]
+
+    if Path(args.outdir).is_dir():
+        shutil.rmtree(Path(args.outdir))
     Path(args.outdir).mkdir(exist_ok=True, parents=True)
-    directories = sorted([child for child in Path("/home/bpool/storage/eukaryotes_genome").iterdir() if child.is_dir()])
 
     print(f"\n{'*' * 20}共生成 {len(directories)} 个SLURM任务文件{'*' * 20}")
     print(f"tn_mining参数:")
@@ -140,9 +168,9 @@ def main():
         create_slurm_script(args, Path(directory))
     
     files = [f'sbatch {file}' for file in Path(args.outdir).iterdir() if file.is_file()]
-    with open(Path(Path(args.outdir),'submit_all_jobs.sh'),'w') as f:
+    with open(Path(Path(args.outdir).parent,'submit_all_jobs.sh'),'w') as f:
         f.writelines('\n'.join(files))
-    print(f"\n如果提交全部任务，使用以下命令:\nbash {Path(Path(args.outdir),'submit_all_jobs.sh')} ")
+    print(f"\n如果提交全部任务，使用以下命令:\nbash {Path(Path(args.outdir).parent,'submit_all_jobs.sh')} ")
 
 
 if __name__ == "__main__":
