@@ -40,10 +40,10 @@ def create_slurm_script(args,path):
 #SBATCH --array=1-{job_number}%60
 
 PERFIX="{args.prefix}"
-GENOMEDIR ="{GENOMEDIR}"
+GENOMEDIR="{GENOMEDIR}"
 
 #输出目录，默认家目录下的PERFIX
-OUTPUT="$HOME/$PERFIX/$GENOMEDIR "
+OUTPUT="$HOME/$PERFIX/$GENOMEDIR"
 FASTADIR="$OUTPUT/fasta"
 LOGDIR="$OUTPUT/logs"
 TMPDIR="$OUTPUT/tmpdir"
