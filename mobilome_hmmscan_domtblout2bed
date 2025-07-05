@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+# -*- encoding: utf-8 -*-
+'''
+@File    :   mobilome_hmmsearch_tblout2bed
+@Time    :   2021/12/12 18:54:56
+@Author  :   Naisu Yang 
+@Version :   1.0
+@Contact :   3298990@qq.com
+'''
+
+# here put the import lib
+import os
+import sys
+import time
+import argparse
+    
+
+def main():
+    parser = argparse.ArgumentParser( description='将hmmsearch结果文件domtblout转换成bed格式')
+    parser.add_argument('-t', '--tabular_file', type=str, required=True, help='tabular output formats' )
+    parser.add_argument('-o', '--output_file', type=str, required=True, help='输出文件名' )
+    args = parser.parse_args()
+    with open(args.tabular_file) as f, open(args.output_file,'w') as opf:
+        for line in f:
+            if not line.startswith('#'):
+                chromosome = line.split()[3]
+                start_pos = int(line.split()[17]) - 1
+                end_pos = line.split()[18]
+                domian = line.split()[0]
+                description = '_'.join(line.split()[22:]).replace(',','')
+                opf.write(f'{chromosome}\t{start_pos}\t{end_pos}\t{domian}\t{description}\n')
+
+if __name__ == '__main__':
+    main()

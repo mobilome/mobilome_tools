@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+# -*- encoding: utf-8 -*-
+'''
+@File    :   mobilome_tn_mining.py
+@Time    :   2024/7/10 21:35:20
+@Author  :   Naisu Yang 
+@Version :   1.0
+@Contact :   3298990@qq.com
+'''
+
+# Import necessary libraries
+import os
+import sys
+import time
+import argparse
+import subprocess
+
+def HowManyTime(tbegin, tend):
+    """
+    Calculates the elapsed time for speed evaluation
+    """
+    tTotal = tend - tbegin
+    tsec = tTotal % 60
+    ttolmin = tTotal // 60
+    thour = ttolmin // 60
+    tmin = ttolmin % 60
+    suretime = f"Elapsed time: {thour} hours, {tmin} minutes, {tsec:.2f} seconds"
+    return suretime
+
+def calculate_time(func):
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        print(HowManyTime(start_time, end_time))
+        return result
+    return wrapper
+
+def run_cmd(cmd):
+    try:
+        subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True,shell=True)
+    except Exception as e:
+        print(f"\033[91m\u2717 Pay Attention!\033[0m ")
+        print(e)
+        sys.exit()
+
+@calculate_time
+def tblastn(query, blastdb, num_threads, output_prefix, tmp_dir, options=None):
+
+    print("Running tblastn")
+
+    # If options are not provided, use default parameters
+    default_options = ""
+    options = ' '.join(options) if options else default_options
+
+    output_file = os.path.join(tmp_dir, f"{output_prefix}.tbl")
+    command = f'tblastn -query {query} -db {blastdb} {options} -outfmt 6 -num_threads {num_threads} -out {output_file}'
+    print(command)
+    run_cmd(command)
+
+    if os.path.exists(output_file) and os.path.getsize(output_file) == 0:
+        os.remove(output_file)
+        return
+    else:
+        return output_file
+
+@calculate_time
+def tbl2bed(tbl, output_prefix, tmp_dir):
+    print("Converting tblastn tabular results (outfmt 6) into six-column BED")
+    output_file = os.path.join(tmp_dir, f"{output_prefix}.bed")
+    command = f"""awk -F '\\t' -v OFS='\\t' '{{if ($9 > $10){{t=$9;$9=$10;$10=t;$13="-"; print $2,$9-1,$10,".",".", $13}}else{{print $2,$9-1,$10,".",".","+"}}}}' {tbl} > {output_file}"""
+    print(command)
+    run_cmd(command)
+
+    return output_file
+
+@calculate_time
+def bedtools_slop(bed_records, left_len, right_len, genome_info):
+    fasta_slop_bed_name = f'{bed_records.split(".")[0]}-L{left_len}-R{right_len}.bed'
+    command = f'bedtools slop -s -l {left_len} -r {right_len} -g {genome_info} -i {bed_records} > {fasta_slop_bed_name}'
+    print(command)
+    run_cmd(command)
+
+    return fasta_slop_bed_name
+
+@calculate_time
+def bedtools_getfasta(fasta_input, fasta_slop_bed_name):
+    fasta_output = f'{fasta_slop_bed_name.split(".")[0]}.fasta'
+    command = f'bedtools getfasta -s -fi {fasta_input} -fo {fasta_output} -bed {fasta_slop_bed_name}'
+    print(command)
+    run_cmd(command)
+
+
+def get_chr_len(genome_file):
+    genome_chr_len = genome_file + '.len'
+
+    if os.path.exists(genome_chr_len):
+        return
+
+    print("Creating chromosome sizes file...")
+    command = f'seqkit fx2tab -l -n -i {genome_file} > {genome_chr_len}'
+    print(command)
+    run_cmd(command)
+
+def parse_name2id(name2id):
+    print('Parsing the name2id file...')
+    name2id_dict = {}
+    with open(name2id, 'r') as file:
+        for line in file:
+            name, assembly_id = line.strip().split('\t')
+            name2id_dict[assembly_id] = name
+
+    return name2id_dict
+
+def parse_seqid2assid(genome_files):
+    print('Parsing the assembly files...')
+    seqid2assid_dict = {}
+    assembly_id = os.path.basename(genome_files).split('.')[0]
+
+    with open(genome_files, "r") as file:
+        for line in file:
+            if line.startswith(">"):
+                seqid2assid_dict[line.split()[0][1:]] = assembly_id
+
+    return seqid2assid_dict
+
+def add_genome_name(fasta_file,name2id_dict,seqid2assid_dict,output_file):
+    print("Adding the genome name to the sequence name")
+    errid_list = []
+    with open(fasta_file, "r") as file, open(output_file, 'w') as output:
+        for line in file:
+            if line.startswith(">"):
+                try:
+                    seqid = line.split(":")[0][1:]
+                    seqloci = line.split(":")[1].strip()
+                    try:
+                        line = f">{seqid}:{seqloci}:{name2id_dict[seqid2assid_dict[seqid]]}\n"
+                    except Exception as e:
+                        errid_list.append(line[1:])
+                except Exception as e:
+                    errid_list.append(line[1:])
+
+            output.write(line)
+
+    if len(errid_list) > 0:
+        errid = os.path.join(os.path.dirname(output_file), f'{os.path.splitext(fasta_file)[0]}.notfound.txt')
+        print(f"\033[91m\u2717 Pay Attention!\033[0m Some IDs have not been modified because corresponding names were not found. Please manually check the relevant IDs.")
+        print(f"All unmodified IDs are saved in: {errid}. Total: {len(errid_list)}")
+
+        with open(errid, 'w') as errfile:
+            errfile.writelines(errid_list)
+
+def main():
+    parser = argparse.ArgumentParser(description='tn mining')
+    parser.add_argument('-query', type=str, required=True, help='Input file name, query fasta file')
+    parser.add_argument('-db', type=str, required=True, help='BLAST database name. Example: GCA_900617795')
+    parser.add_argument('-name_id', required=True, help='Path to the text file containing names and assembly IDs (tab-separated)')
+    parser.add_argument('-tmp_dir', type=str, help='Temporary directory for tn mining, default= current directory')
+    parser.add_argument('-left_len', type=int, default=2000, help='Number of base pairs to subtract from the start coordinate')
+    parser.add_argument('-right_len', type=int, default=2000, help='Number of base pairs to add to the end coordinate')
+    parser.add_argument('-out', type=str, required=True, help='Output file name')
+    parser.add_argument('-num_threads', type=int, default=1, help='Number of threads (CPUs) to use in the BLAST search. Default = 1')
+    parser.add_argument('-tblastn_option', nargs=argparse.REMAINDER, help='tblastn options, must be placed at the end')
+
+    args = parser.parse_args()
+
+    print('\nStart running')
+
+    query = args.query
+    options = args.tblastn_option
+    num_threads = args.num_threads
+    blastdb = args.db
+    name2id = args.name_id
+    output_file = args.out
+
+    tmp_dir = args.tmp_dir if args.tmp_dir else os.getcwd()
+
+    if not os.path.exists(tmp_dir):
+        os.makedirs(tmp_dir)
+
+    output_prefix = os.path.splitext(os.path.basename(blastdb))[0]
+
+    print('\n----------Step 1----------')
+    tbl = tblastn(query, blastdb, num_threads, output_prefix, tmp_dir, options)
+
+    if tbl:
+        print('\n\n----------Step 2----------')
+        bed = tbl2bed(tbl, output_prefix, tmp_dir)
+    else:
+        print("\033[91m\u2717 Pay Attention!\033[0m tblastn results are empty!")
+        sys.exit()
+
+    print('\n\n----------Step 3----------')
+    print("Sorting and merging BED file")
+    bed_sorted_file = os.path.join(tmp_dir, f"{output_prefix}.sort.bed")
+    command = f'sort -k1,1 -k2,2n {bed} > {bed_sorted_file} '
+    print(command)
+    run_cmd(command)
+
+    bed_merge_file = os.path.join(tmp_dir, f"{output_prefix}.sort.merge.bed")
+    command = f'bedtools merge -i {bed_sorted_file} -c 6,6,6 -o count,count,distinct > {bed_merge_file}'
+    print(command)
+    run_cmd(command)
+
+    print('\n\n----------Step 4----------')
+    genome_file = f'{blastdb}.fna'
+    get_chr_len(genome_file)
+
+    print("Extending flanking sequence and removing redundancy")
+    bed_slop_file = os.path.join(tmp_dir, f"{output_prefix}.sort.merge.L{args.left_len}.R{args.right_len}.uniq.bed")
+    command = f'bedtools slop -s -l {args.left_len} -r {args.right_len} -g {genome_file}.len -i {bed_merge_file} | uniq > {bed_slop_file}'
+    print(command)
+    run_cmd(command)
+
+    print('\n\n----------Step 5----------')
+    print("Extracting sequence")
+    getfasta_file = os.path.join(tmp_dir, f"{output_prefix}.sort.merge.L{args.left_len}.R{args.right_len}.uniq.fasta")
+    command = f'bedtools getfasta -s -fi {genome_file} -bed {bed_slop_file} | seqkit seq -ugG "N" > {getfasta_file}'
+    print(command)
+    run_cmd(command)
+
+    print('\n\n----------Step 6----------')
+    tbegin = time.time()
+    name2id_dict = parse_name2id(name2id)
+    seqid2assid_dict = parse_seqid2assid(genome_file)
+    add_genome_name(getfasta_file,name2id_dict,seqid2assid_dict,output_file)
+    tend = time.time()
+    print(HowManyTime(tbegin, tend))
+    print('All steps completed successfully')
+
+
+if __name__ == "__main__":
+    main()
