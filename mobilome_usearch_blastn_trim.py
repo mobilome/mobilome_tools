@@ -32,138 +32,22 @@ def merge_files(files, output_file):
             with open(file, 'rb') as in_f:
                 shutil.copyfileobj(in_f, out_f)
 
-def tbl2bed(tbl,bed):
-    """Convert table format to BED format."""
-    with open(tbl) as f1,open(bed,'w') as f2:
-        for line in f1:
-            if not line.startswith('#'):
-                parts = line.split()
-                if len(parts) >= 10:
-                    chrom = parts[1]
-                    chrom_start = int(parts[8])
-                    chrom_end = int(parts[9])
-                if chrom_start > chrom_end:
-                    line = f'{chrom}\t{chrom_end - 1}\t{chrom_start}\t.\t.\t-\n'
-                else:
-                    line = f'{chrom}\t{chrom_start - 1}\t{chrom_end}\t.\t.\t+\n'
-                f2.write(line)
-
 def run_cmd(cmd):
     """Run shell command with error handling."""
     try:
-        subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True,shell=True)
+        subprocess.run(cmd,stdout=None, stderr=None, check=True, shell=True)
     except Exception as e:
         print(f"Error running: {e}")
         raise
 
 
-def run_blastn(query, subject, output, flank_length):
-
-    """Run BLASTN with pipeline processing."""
-
-    if flank_length:
-        bed_dir = Path(output) / 'tmp' / 'bed'
-        bed_dir.mkdir(exist_ok=True)
-        bed_file = (bed_dir / query.stem).with_suffix('.bed')
-        bed_slop_file = (bed_dir / query.stem).with_suffix(f'.slop{flank_length}.bed')
-        len_file = (bed_dir / subject.stem).with_suffix('.len')
-        cmd = (
-        f"seqkit fx2tab -l -n -i {subject} > {len_file}"
-        )
-        run_cmd(cmd)
-
-        cmd = (
-        f"blastn -query {query} -subject {subject} -strand plus "
-        f"-outfmt 6 -max_target_seqs 99999999 -task blastn -evalue 1e-5 | "
-        f"mobilome_blast_tbl2bed -t /dev/stdin -o /dev/stdout | "
-        f"sort -k1,1 -k2,2n | bedtools merge -d 10000 > {bed_file} "
-    )
-        run_cmd(cmd)
-
-        cmd = (
-        f"bedtools slop -s -l {flank_length} -r {flank_length} -g {len_file} -i {bed_file} > {bed_slop_file} "
-   
-    )
-        run_cmd(cmd)
-
-        blast_clusters_out_dir = Path(output,'clusters_trim_fasta')
-        blast_clusters_slop_out_dir = Path(output, f'clusters_trim_slop{flank_length}_fasta')
-        blast_clusters_output_file = (blast_clusters_out_dir / query.stem).with_suffix('.fasta')
-        blast_clusters_slop_output_file = (blast_clusters_slop_out_dir / query.stem).with_suffix(f'.slop{flank_length}.fasta')
-
-        cmd = (
-            f"bedtools getfasta -fi {subject} -bed {bed_file} -fo {blast_clusters_output_file}"
-        )
-        run_cmd(cmd)
-
-        cmd = (
-            f"bedtools getfasta -fi {subject} -bed {bed_slop_file} -fo {blast_clusters_slop_output_file}"
-        )
-        run_cmd(cmd)
-
-    # cmd = (
-    #     f"blastn -query {query} -subject {subject} -strand plus "
-    #     f"-outfmt 6 -max_target_seqs 99999999 -task blastn -evalue 1e-5 | "
-    #     f"mobilome_blast_tbl2bed -t /dev/stdin -o /dev/stdout | "
-    #     f"sort -k1,1 -k2,2n | bedtools merge -d 10000 | "
-    #     f"bedtools getfasta -fi {subject} -bed /dev/stdin -fo {output_file}"
-    # )
-    # run_cmd(cmd)
-
-def makeblastdb(fasta, blastdb_dir):
-    """Create BLAST database from FASTA file."""
-    db = Path(blastdb_dir,fasta.stem)
-    cmd = (
-        f"makeblastdb -in {fasta} -input_type fasta "
-        f"-title {fasta.stem} -dbtype nucl -out {db}"
-    )
-    run_cmd(cmd)
-
-    return db
 
 def run_mafft(fasta, out):
     cmd = f"mafft --auto {fasta} > {out}"
     run_cmd(cmd)
 
-def run_singleton_blast(query, singleton_file, db, output_file, processes):
-
-    cmd = (
-        f"blastn -query {query} -db {db} "
-        f"-strand plus -outfmt 6 -max_target_seqs 99999999 "
-        f"-task blastn -evalue 1e-5 -num_threads 1 | "
-        f"mobilome_blast_tbl2bed -t /dev/stdin -o /dev/stdout | "
-        f"sort -k1,1 -k2,2n | bedtools merge -d 10000 | "
-        f"bedtools getfasta -fi {singleton_file} -bed /dev/stdin -fo {output_file}"
-    )
-    run_cmd(cmd)
 
 def process_clusters(clusters_records, cons, clusters, processes, flank_length, output):
-
-    # Setup directories
-    tmp_dir = Path(output,'tmp')
-    tmp_dir.mkdir(exist_ok=True)
-
-    # Read consensus sequences
-    cons_dict = {rec.id: rec for rec in SeqIO.parse(cons, 'fasta')}
-    print(f"Total {len(cons_dict)} consensus seqs in {cons}")
-
-    # Filter cluster consensus sequences
-    clusters_prefix_records = ['Cluster' + record for record in clusters_records]
-    clusters_cons = {cons: record for cons, record in cons_dict.items() if cons in clusters_prefix_records}
-    print(f"Found {len(clusters_cons)} clusters with >2 sequences")
-
-    # Write filtered consensus
-    filtered_consensus_fasta = Path(output,'filtered_consensus.fasta')
-    SeqIO.write(clusters_cons.values(), filtered_consensus_fasta, "fasta")
-    print(f"Filtered consensus saved to {filtered_consensus_fasta}")
-
-    # Split consensus files
-    cluster_cons_split_dir = Path(tmp_dir,'cluster_cons_split')
-    cluster_cons_split_dir.mkdir(exist_ok=True)
-    for cluster, record in clusters_cons.items():
-        output_path = os.path.join(cluster_cons_split_dir, cluster)
-        with open(output_path, "w") as output_file:
-            SeqIO.write(record, output_file, "fasta")
 
     #makeblastdb for singleton
     blastdb_dir = Path(tmp_dir,'db')
@@ -224,15 +108,6 @@ def process_clusters(clusters_records, cons, clusters, processes, flank_length, 
     # BLASTN on singletons
     print(f"Running BLASTN on singleton sequences...")
 
-    # cmd = (
-    #     f"ls {cluster_cons_split_dir} | xargs -I {{}} echo '"
-    #     f"blastn -query {cluster_cons_split_dir}/{{}} -db {db} "
-    #     f"-strand plus -outfmt 6 -max_target_seqs 99999999 "
-    #     f"-task blastn -evalue 1e-5 -num_threads 1 | "
-    #     f"mobilome_blast_tbl2bed -t /dev/stdin -o /dev/stdout | "
-    #     f"sort -k1,1 -k2,2n | bedtools merge -d 10000 | "
-    #     f"bedtools getfasta -fi {singleton_file} -bed /dev/stdin -fo {blast_singletons_out_dir}/{{}}' | parallel -j {processes} --bar  "
-    # )
     singletons_trim_fasta_file = Path(output,'singletons_trim_fasta.fasta')
     cmd = (
         f"blastn -query {filtered_consensus_fasta} -db {db} "
@@ -297,13 +172,24 @@ def split_consensus_files(clusters_cons, output_dir):
     cluster_cons_split_dir.mkdir(exist_ok=True)
     
     for rec in SeqIO.parse(clusters_cons, 'fasta'):
-        output_path = os.path.join(cluster_cons_split_dir, rec.id)
+        output_path = os.path.join(cluster_cons_split_dir, rec.id[7:])
         with open(output_path, "w") as output_file:
             SeqIO.write(rec, output_file, "fasta")
 
     return cluster_cons_split_dir
 
-def run_clusters_blast(cluster_cons_split_dir, clusters_dir, output_file, processes):
+def makeblastdb(fasta, blastdb_dir):
+    """Create BLAST database from FASTA file."""
+    db = Path(blastdb_dir,fasta.stem)
+    cmd = (
+        f"makeblastdb -in {fasta} -input_type fasta "
+        f"-title {fasta.stem} -dbtype nucl -out {db}"
+    )
+    run_cmd(cmd)
+
+    return db
+
+def run_singleton_blast(query, singleton_file, db, output_file, processes):
 
     cmd = (
         f"blastn -query {query} -db {db} "
@@ -314,6 +200,118 @@ def run_clusters_blast(cluster_cons_split_dir, clusters_dir, output_file, proces
         f"bedtools getfasta -fi {singleton_file} -bed /dev/stdin -fo {output_file}"
     )
     run_cmd(cmd)
+
+def run_clusters_blast(cluster_cons_split_dir, clusters_dir, output_dir, processes):
+
+    tbl_dir = Path(output_dir, 'tmp', 'tbl')
+    tbl_dir.mkdir(parents=True, exist_ok=True) 
+
+    cmd = (
+        f"find {cluster_cons_split_dir} -maxdepth 1 -type f | "
+        f"parallel -j {processes} --bar "
+        f"'blastn -query {{}} -subject {clusters_dir}/$(basename {{}}) "
+        f"-strand plus -outfmt 6 -max_target_seqs 99999999 "
+        f"-task blastn -evalue 1e-5 > {tbl_dir}/$(basename {{}})'"
+    )
+    print(f"Running BLASTN on filtered consensus sequences...")
+    run_cmd(cmd)
+
+    return tbl_dir
+
+
+def tbl2bed(tbl_dir, output_dir, processes):
+    """Convert table format to BED format."""
+    bed_dir = Path(output_dir, 'tmp', 'bed')
+    bed_dir.mkdir(parents=True, exist_ok=True) 
+
+    cmd = (
+        f"find {tbl_dir} -maxdepth 1 -type f | "
+        f"parallel -j {processes} "
+        f"'mobilome_blast_tbl2bed -t {{}} -o /dev/stdout | "
+        f"sort -k1,1 -k2,2n | bedtools merge -d 10000 > {bed_dir}/$(basename {{}})'"
+    )
+
+    run_cmd(cmd)
+
+    return bed_dir
+
+def get_seq_len(clusters_dir, output_dir, processes):
+
+    seq_len_dir = Path(output_dir, 'tmp', 'seq_len')
+    seq_len_dir.mkdir(parents=True, exist_ok=True)
+
+    cmd = (
+        f"find {clusters_dir} -maxdepth 1 -type f -not -name '*.fai' | "
+        f"parallel -j {processes} "
+        f"'seqkit fx2tab -l -n -i {{}} > {seq_len_dir}/$(basename {{}})'"
+    )
+
+    run_cmd(cmd)
+
+    return seq_len_dir
+
+def bed_slop(bed_dir, seq_len_dir, flank_length, output_dir, processes):
+
+    bed_slop_dir = Path(output_dir, 'tmp', f'bed_slop_{flank_length}')
+    bed_slop_dir.mkdir(parents=True, exist_ok=True)
+
+    cmd = (
+        f"find {bed_dir} -maxdepth 1 -type f | "
+        f"parallel -j {processes} "
+        f"'bedtools slop -b {flank_length} -g {seq_len_dir}/$(basename {{}}) -i {{}} > {bed_slop_dir}/$(basename {{}})'"
+    )
+
+    run_cmd(cmd)
+
+    return bed_slop_dir
+
+def create_namemap(clusters_dir, output_dir, processes):
+    namemap_dir = Path(output_dir, 'tmp', 'namemap')
+    namemap_dir.mkdir(parents=True, exist_ok=True)
+
+    cmd = (
+        f"find {clusters_dir} -maxdepth 1 -type f -not -name '*.fai' | "
+        f"parallel -j {processes} "
+        f"'grep \"^>\" {{}} | awk -F\"[>() ]\" \"{{print \\$2 \\\" \\\" \\$NF}}\" > {namemap_dir}/$(basename {{}})'"
+    )
+
+    run_cmd(cmd)
+
+    return namemap_dir
+
+def get_clusters_trim_fasta(bed_dir, clusters_dir, namemap_dir, output_dir, processes):
+
+    clusters_trim_fasta_dir = Path(output_dir, 'clusters_trim_fasta')
+    clusters_trim_fasta_dir.mkdir(parents=True, exist_ok=True)
+
+    cmd = (
+        f"ls {bed_dir} | xargs -I {{}} echo "
+        f"\"bedtools getfasta -bed {bed_dir}/{{}} -fi {clusters_dir}/{{}} | "
+        f"awk 'NR==FNR {{map[\$1]=\$2; next}} /^>/ {{key=substr(\$0,2); split(key, arr, \\\"(\\\"); "
+        f"if (arr[1] in map) print \$0 \\\" \\\" map[arr[1]]; else print \$0; next}} {{print}}' "
+        f"{namemap_dir}/{{}} /dev/stdin > {clusters_trim_fasta_dir}/{{}}.fasta\" | parallel -j {processes} --bar"
+    )
+    print(f"get sequences...")
+    run_cmd(cmd)
+
+    return clusters_trim_fasta_dir
+
+def get_clusters_trim_slop_fasta(bed_slop_dir, clusters_dir, namemap_dir, output_dir, processes):
+
+    clusters_trim_slop_fasta_dir = Path(output_dir, 'clusters_trim_slop_fasta')
+    clusters_trim_slop_fasta_dir.mkdir(parents=True, exist_ok=True)
+
+    cmd = (
+        f"ls {bed_slop_dir} | xargs -I {{}} echo "
+        f"\"bedtools getfasta -bed {bed_slop_dir}/{{}} -fi {clusters_dir}/{{}} | "
+        f"awk 'NR==FNR {{map[\$1]=\$2; next}} /^>/ {{key=substr(\$0,2); split(key, arr, \\\"(\\\"); "
+        f"if (arr[1] in map) print \$0 \\\" \\\" map[arr[1]]; else print \$0; next}} {{print}}' "
+        f"{namemap_dir}/{{}} /dev/stdin > {clusters_trim_slop_fasta_dir}/{{}}.fasta\" | parallel -j {processes} --bar"
+    )
+    print(f"get sequences...")
+    run_cmd(cmd)
+
+    return clusters_trim_slop_fasta_dir
 
 def main():
     parser = argparse.ArgumentParser(
@@ -354,7 +352,21 @@ def main():
 
     filtered_consensus_fasta = read_and_filter_consensus(args.cons, clusters_records, output_dir)
 
-    split_consensus_files(filtered_consensus_fasta, output_dir)
+    cluster_cons_split_dir = split_consensus_files(filtered_consensus_fasta, output_dir)
+
+    tbl_dir = run_clusters_blast(cluster_cons_split_dir, args.clusters, output_dir, args.processes)
+
+    bed_dir = tbl2bed(tbl_dir, output_dir, args.processes)
+
+    namemap_dir = create_namemap(args.clusters, output_dir, args.processes)
+
+    seq_len_dir = get_seq_len(args.clusters, output_dir, args.processes)
+
+    bed_slop_dir = bed_slop(bed_dir, seq_len_dir, args.flank_length, output_dir, args.processes)
+
+    clusters_trim_fasta_dir = get_clusters_trim_fasta(bed_dir, args.clusters, namemap_dir, output_dir, args.processes)
+
+    clusters_trim_slop_fasta_dir = get_clusters_trim_slop_fasta(bed_slop_dir, args.clusters, namemap_dir, output_dir, args.processes)
     # Process clusters with BLASTN and MAFFT
     #process_clusters(clusters_records, args.cons, args.clusters, args.processes, args.flank_length, args.output)
 
