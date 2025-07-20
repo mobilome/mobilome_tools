@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+# -*- encoding: utf-8 -*-
+'''
+@File    :   mobilome_usearch_blastn_trim.py
+@Time    :   2025/07/19 20:22:34
+@Author  :   Naisu Yang 
+@Version :   1.0
+@Contact :   3298990@qq.com
+'''
+
+# here put the import lib
+
 import os
 import argparse
 import subprocess
@@ -40,63 +51,23 @@ def run_cmd(cmd):
         print(f"Error running: {e}")
         raise
 
+def run_mafft_parallel(fasta_dir, processes):
 
+    mafft_out_dir = Path(fasta_dir).parent / f'mafft_{Path(fasta_dir).name}'
+    mafft_out_dir.mkdir(parents=True, exist_ok=True)
 
-def run_mafft(fasta, out):
-    cmd = f"mafft --auto {fasta} > {out}"
+    cmd = (
+        f"find {fasta_dir} -maxdepth 1 -type f -name '*.fasta' | "
+        f"parallel -j {processes} --bar "
+        f"'mafft --auto --quiet {{}} > {mafft_out_dir}/$(basename {{}} .fasta).aln'"
+    )
+
+    print(cmd)
+    print(f"run mafft...")
+
     run_cmd(cmd)
 
-
 def process_clusters(clusters_records, cons, clusters, processes, flank_length, output):
-
-    #makeblastdb for singleton
-    blastdb_dir = Path(tmp_dir,'db')
-    blastdb_dir.mkdir(exist_ok=True)
-    singleton_file = Path(tmp_dir, 'singletons.fasta')
-    db = makeblastdb(singleton_file,blastdb_dir)
-
-    # Prepare parallel processing
-    blast_clusters_args_list = []
-    blast_singletons_args_list = []
-    blast_clusters_mafft_args_list = []
-    blast_clusters_slop_mafft_args_list = []
-    blast_singletons_mafft_args_list = []
-
-    blast_clusters_out_dir = Path(output,'clusters_trim_fasta')
-    blast_clusters_slop_out_dir = Path(output, f'clusters_trim_slop{flank_length}_fasta')
-    #blast_singletons_out_dir = Path(output,'singletons_trim_fasta')
-    blast_clusters_mafft_out_dir = Path(output,'clusters_trim_fasta_mafft_out')
-    blast_clusters_slop_mafft_out_dir = Path(output,f'clusters_trim_slop{flank_length}_fasta_mafft_out')
-    #blast_singletons_mafft_out_dir = Path(output,'singletons_trim_fasta_mafft_out')
-
-    blast_clusters_out_dir.mkdir(exist_ok=True)
-    blast_clusters_slop_out_dir.mkdir(exist_ok=True)
-    #blast_singletons_out_dir.mkdir(exist_ok=True)
-    blast_clusters_mafft_out_dir.mkdir(exist_ok=True)
-    blast_clusters_slop_mafft_out_dir.mkdir(exist_ok=True)
-    #blast_singletons_mafft_out_dir.mkdir(exist_ok=True)
-
-    for cluster_record in clusters_records:
-        query = Path(cluster_cons_split_dir, 'Cluster' + cluster_record)
-        subject = Path(clusters, cluster_record)
-
-        blast_clusters_output_file = Path(blast_clusters_out_dir , 'Cluster' + cluster_record + ".fasta")
-        blast_clusters_slop_output_file = Path(blast_clusters_slop_out_dir , 'Cluster' + cluster_record + f".slop{flank_length}.fasta")
-        #blast_singletons_output_file = Path(blast_singletons_out_dir , 'Cluster' + cluster_record + ".fasta")
-        blast_clusters_mafft_output_file = Path(blast_clusters_mafft_out_dir , 'Cluster' + cluster_record + ".aln")
-        blast_clusters_slop_mafft_output_file = Path(blast_clusters_slop_mafft_out_dir , 'Cluster' + cluster_record + f".slop{flank_length}.aln")
-        
-        blast_clusters_args_list.append((query, subject, output,flank_length))
-        #blast_singletons_args_list.append((query, singleton_file, db, blast_singletons_output_file, processes))
-        blast_clusters_mafft_args_list.append((blast_clusters_output_file, blast_clusters_mafft_output_file))
-        blast_clusters_slop_mafft_args_list.append((blast_clusters_slop_output_file, blast_clusters_slop_mafft_output_file))
-
-
-    # Run BLASTN in parallel
-    print(f"Running BLASTN on filtered consensus sequences...")
-    with Pool(processes=processes) as pool:
-        pool.starmap(run_blastn, blast_clusters_args_list)
-    print(f"BLASTN completed. Output in: {blast_clusters_out_dir}")
 
     # Merge results
     cluster_blast_trim_merged_file = Path(output,'cluster_blast_trim.fasta')
@@ -105,51 +76,8 @@ def process_clusters(clusters_records, cons, clusters, processes, flank_length, 
     print(f"Merged results saved to : {cluster_blast_trim_merged_file}")
     merge_files(Path(output,f'clusters_trim_slop{flank_length}_fasta').glob('*.fasta'), cluster_blast_trim_slop_merged_file)
 
-    # BLASTN on singletons
-    print(f"Running BLASTN on singleton sequences...")
-
-    singletons_trim_fasta_file = Path(output,'singletons_trim_fasta.fasta')
-    cmd = (
-        f"blastn -query {filtered_consensus_fasta} -db {db} "
-        f"-strand plus -outfmt 6 -max_target_seqs 99999999 "
-        f"-task blastn -evalue 1e-20 -num_threads {processes} | "
-        f"mobilome_blast_tbl2bed -t /dev/stdin -o /dev/stdout | "
-        f"sort -k1,1 -k2,2n | bedtools merge -d 10000 | "
-        f"bedtools getfasta -fi {singleton_file} -bed /dev/stdin -fo {singletons_trim_fasta_file}"
-    )
-    try:
-        subprocess.run(cmd,stdout=None,stderr=None,check=True,shell=True)
-    except Exception as e:
-        print(f"Error running: {e}")
-        raise
-
     all_trim_merged_file = Path(output, f'all_trim.fasta')
     merge_files([cluster_blast_trim_slop_merged_file, singletons_trim_fasta_file], all_trim_merged_file)
-
-    # with Pool(processes=processes) as pool:
-    #     pool.starmap(run_singleton_blast, blast_singletons_args_list)
-    # print(f"BLASTN completed. Output in: {blast_singletons_out_dir}")
-
-    # valid_files = []
-    # # 遍历文件夹中的所有文件
-    # for file in Path(blast_singletons_out_dir).iterdir():
-    #     if file.is_file():
-    #         if file.stat().st_size == 0:
-    #             # 删除大小为0的文件
-    #             file.unlink()
-    #         else:
-    #             valid_files.append(file)
-    # for file in valid_files:
-    #     blast_singletons_mafft_output_file = Path(blast_singletons_mafft_out_dir , file.stem + ".aln")
-    #     blast_singletons_mafft_args_list.append((file, blast_singletons_mafft_output_file))
-
-    # Run MAFFT in parallel
-    print(f"Running MAFFT on each cluster...")
-    with Pool(processes=processes) as pool:
-        pool.starmap(run_mafft, blast_clusters_mafft_args_list)
-        pool.starmap(run_mafft, blast_clusters_slop_mafft_args_list)
-        #pool.starmap(run_mafft, blast_singletons_mafft_args_list)
-    print(f"MAFFT completed. Output in: {blast_clusters_mafft_out_dir}")
 
 def read_and_filter_consensus(cons, clusters_records, output_dir):
     """Read consensus sequences and filter based on cluster records."""
@@ -183,22 +111,44 @@ def makeblastdb(fasta, blastdb_dir):
     db = Path(blastdb_dir,fasta.stem)
     cmd = (
         f"makeblastdb -in {fasta} -input_type fasta "
-        f"-title {fasta.stem} -dbtype nucl -out {db}"
+        f"-title {fasta.stem} -dbtype nucl -out {db} > /dev/null"
     )
+    print(cmd)
     run_cmd(cmd)
 
     return db
 
-def run_singleton_blast(query, singleton_file, db, output_file, processes):
+def run_singleton_blast(filtered_consensus_fasta, singleton_file, output_dir, processes):
+
+    blast_db_dir = Path(output_dir, 'tmp', 'blast_db')
+    blast_db_dir.mkdir(parents=True, exist_ok=True) 
+    cmd = (
+        f"makeblastdb -in {singleton_file} -input_type fasta "
+        f"-title $(basename {singleton_file} .fasta) -dbtype nucl -out {blast_db_dir}/$(basename {singleton_file} .fasta) -logfile /dev/null"
+    )
+    run_cmd(cmd)
+
+    namemap_dir = Path(output_dir, 'tmp', 'namemap')
+    namemap_dir.mkdir(parents=True, exist_ok=True)
+    cmd = (
+        f"grep \"^>\" {singleton_file} | awk -F\"[>() ]\" '{{print $2 \" \" $NF}}' > {namemap_dir}/singleton.namemap"
+    )
+    run_cmd(cmd)
 
     cmd = (
-        f"blastn -query {query} -db {db} "
+        f"blastn -query {filtered_consensus_fasta} -db {blast_db_dir}/$(basename {singleton_file} .fasta) "
         f"-strand plus -outfmt 6 -max_target_seqs 99999999 "
-        f"-task blastn -evalue 1e-5 -num_threads 1 | "
+        f"-task blastn -evalue 1e-5 -num_threads {processes} | "
         f"mobilome_blast_tbl2bed -t /dev/stdin -o /dev/stdout | "
         f"sort -k1,1 -k2,2n | bedtools merge -d 10000 | "
-        f"bedtools getfasta -fi {singleton_file} -bed /dev/stdin -fo {output_file}"
+        f"bedtools getfasta -fi {singleton_file} -bed /dev/stdin -fo /dev/stdout 2> /dev/null | "
+        f"awk 'NR==FNR {{map[$1]=$2; next}} /^>/ {{key=substr($0,2); split(key, arr, \"(\"); "
+        f"if (arr[1] in map) print $0 \" \" map[arr[1]]; else print $0; next}} {{print}}' "
+        f"{namemap_dir}/singleton.namemap /dev/stdin > {Path(output_dir, 'singletons_trim.fasta')}"
     )
+
+    print(f"Running BLASTN on singleton sequences...")
+
     run_cmd(cmd)
 
 def run_clusters_blast(cluster_cons_split_dir, clusters_dir, output_dir, processes):
@@ -213,11 +163,11 @@ def run_clusters_blast(cluster_cons_split_dir, clusters_dir, output_dir, process
         f"-strand plus -outfmt 6 -max_target_seqs 99999999 "
         f"-task blastn -evalue 1e-5 > {tbl_dir}/$(basename {{}})'"
     )
+
     print(f"Running BLASTN on filtered consensus sequences...")
     run_cmd(cmd)
 
     return tbl_dir
-
 
 def tbl2bed(tbl_dir, output_dir, processes):
     """Convert table format to BED format."""
@@ -313,6 +263,62 @@ def get_clusters_trim_slop_fasta(bed_slop_dir, clusters_dir, namemap_dir, output
 
     return clusters_trim_slop_fasta_dir
 
+def get_namemap(clusters_dir, output_dir):
+
+    seq_ids_file = Path(output_dir, 'tmp', 'seq_ids.txt')
+    seq_ids_namemap_file = Path(output_dir, 'tmp', 'seq_ids.namemap')
+
+    seq_ids = {
+        rec.id.partition(":")[0]
+        for file in Path(clusters_dir).iterdir()
+        if file.suffix != '.fai'
+        for rec in SeqIO.parse(file, 'fasta')
+    }
+
+    seq_ids_file.write_text("\n".join(seq_ids))
+
+    cmd = (
+        f"rg -w -f {seq_ids_file} /storage/eukaryotes_genome/eukaryotes.namemap > {seq_ids_namemap_file}"
+    )
+
+    print('Search Genome accession...')
+
+    run_cmd(cmd)
+
+    with open('your_file.txt', 'r') as f:
+        namemap = {line.strip().split()[1]: line.strip().split()[0] 
+                for line in f if len(line.strip().split()) >= 2}
+
+    return namemap
+
+# def extend_clusters_flanking_regions(clusters_trim_fasta_dir, namemap, output_dir, processes):
+
+#     extend_tmp_dir = Path(output_dir, 'tmp', 'extend_tmp')
+#     extend_tmp_dir.mkdir(parents=True, exist_ok=True)
+
+#     clusters_trim_extent_fasta_dir = Path(output_dir, 'clusters_trim_extent_fasta')
+#     clusters_trim_extent_fasta_dir.mkdir(parents=True, exist_ok=True)
+
+#     for file in Path(clusters_trim_fasta_dir).glob('*.fasta'):
+#         for rec in SeqIO.parse(file, 'fasta'):
+
+#     cmd = (
+#         f"find {bed_dir} -maxdepth 1 -type f | "
+#         f"parallel -j {processes} "
+#         f"'bedtools slop -b 5000 -g  -i {{}} > {bed_slop_dir}/$(basename {{}})'"
+#     )
+    #-g /storage/eukaryotes_genome/fungi/GCA/GCA_025169535_1.fna.fai -i /dev/stdin | bedtools getfasta -fi /storage/eukaryotes_genome/fungi/GCA/GCA_025169535_1.fna -bed /dev/stdin -fo 3.fa
+
+    # with open(file, 'rb') as in_f:
+    #     shutil.copyfileobj(in_f, out_f)
+    # for rec in SeqIO.parse(clusters_cons, 'fasta'):
+    # output_path = os.path.join(cluster_cons_split_dir, rec.id[7:])
+    # with open(output_path, "w") as output_file:
+    #     SeqIO.write(rec, output_file, "fasta")
+    # pass
+
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Process USearch clustering results and perform BLASTN alignment.',
@@ -350,9 +356,13 @@ def main():
     merge_files(files, clusters_file)
     print(f"Saved {len(clusters_records)} clusters to {clusters_file}")
 
+    get_namemap(args.clusters, output_dir,  args.processes)
+
     filtered_consensus_fasta = read_and_filter_consensus(args.cons, clusters_records, output_dir)
 
     cluster_cons_split_dir = split_consensus_files(filtered_consensus_fasta, output_dir)
+    
+    run_singleton_blast(filtered_consensus_fasta, singleton_file, output_dir, args.processes)
 
     tbl_dir = run_clusters_blast(cluster_cons_split_dir, args.clusters, output_dir, args.processes)
 
@@ -365,10 +375,11 @@ def main():
     bed_slop_dir = bed_slop(bed_dir, seq_len_dir, args.flank_length, output_dir, args.processes)
 
     clusters_trim_fasta_dir = get_clusters_trim_fasta(bed_dir, args.clusters, namemap_dir, output_dir, args.processes)
-
-    clusters_trim_slop_fasta_dir = get_clusters_trim_slop_fasta(bed_slop_dir, args.clusters, namemap_dir, output_dir, args.processes)
-    # Process clusters with BLASTN and MAFFT
-    #process_clusters(clusters_records, args.cons, args.clusters, args.processes, args.flank_length, args.output)
+    namemap = get_namemap(args.clusters, output_dir)
+    extend_clusters_flanking_regions(clusters_trim_fasta_dir, namemap, output_dir, args.processes)
+    #run_mafft_parallel(clusters_trim_fasta_dir, args.processes)
+    #clusters_trim_slop_fasta_dir = get_clusters_trim_slop_fasta(bed_slop_dir, args.clusters, namemap_dir, output_dir, args.processes)
+    #run_mafft_parallel(clusters_trim_slop_fasta_dir, args.processes)
 
 if __name__ == '__main__':
     main()
