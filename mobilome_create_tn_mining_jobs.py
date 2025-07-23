@@ -22,7 +22,7 @@ def count_lines(filename):
                 count += 1
     return count
 
-def create_slurm_script(args,path):
+def create_slurm_script(args, path):
     GCA_list = Path(path,'GCA.list')
     job_number = count_lines(GCA_list)
     if path.parent.name == "eukaryotes_genome":
@@ -64,9 +64,9 @@ if [ ! -f "$GENOME_FILE" ]; then
 fi
 
 #运行mobilome_tn_mining
-echo mobilome_tn_mining -query {Path(args.dde).resolve()} -db ${{GENOME_FILE%.fna}} -name_id {Path(path,'name2id.txt').resolve()}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num {args.num_threads} -tblastn_option {args.blast_options} > $LOGDIR/$(basename "$GENOME_FILE" .fna).log
+echo mobilome_tn_mining -query {Path(args.dde).resolve()} -db ${{GENOME_FILE%.fna.gz}} -name_id {Path(path,'name2id.txt').resolve()}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num {args.num_threads} -tblastn_option {args.blast_options} > $LOGDIR/$(basename "$GENOME_FILE" .fna).log
 
-mobilome_tn_mining -query {Path(args.dde).resolve()} -db ${{GENOME_FILE%.fna}} -name_id {Path(path,'name2id.txt').resolve()}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num {args.num_threads} -tblastn_option {args.blast_options} >> $LOGDIR/$(basename "$GENOME_FILE" .fna).log
+mobilome_tn_mining -query {Path(args.dde).resolve()} -db ${{GENOME_FILE%.fna.gz}} -name_id {Path(path,'name2id.txt').resolve()}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num {args.num_threads} -tblastn_option {args.blast_options} >> $LOGDIR/$(basename "$GENOME_FILE" .fna).log
 """
 
     # 将内容写入文件
@@ -140,17 +140,17 @@ def main():
     # 根据参数调用不同的函数
     if args.genome == "all":
         directories = sorted([child for child in Path("/home/bpool/storage/eukaryotes_genome").iterdir() if child.is_dir()])
-        directories.append(Path("/home/bpool/storage/archaea-genome"))
-        directories.append(Path("/home/bpool/storage/bacteria-genome"))
-        directories.append(Path("/home/bpool/storage/viruses-genome"))
+        directories.append(Path("/home/cache/archaea-genome"))
+        directories.append(Path("/home/cache/bacteria-genome"))
+        directories.append(Path("/home/cache/viruses-genome"))
     elif args.genome == "eukaryota":
-        directories = sorted([child for child in Path("/home/bpool/storage/eukaryotes_genome").iterdir() if child.is_dir()])
+        directories = sorted([child for child in Path("/home/cache/eukaryotes_genome").iterdir() if child.is_dir()])
     elif args.genome == "archaea":
-        directories = [Path("/home/bpool/storage/archaea-genome")]
+        directories = [Path("/home/cache/archaea-genome")]
     elif args.genome == "bacteria":
-        directories = [Path("/home/bpool/storage/bacteria-genome")]
+        directories = [Path("/home/cache/bacteria-genome")]
     elif args.genome == "viruses":
-        directories = [Path("/home/bpool/storage/viruses-genome")]
+        directories = [Path("/home/cache/viruses-genome")]
 
     if Path(args.outdir).is_dir():
         shutil.rmtree(Path(args.outdir))
