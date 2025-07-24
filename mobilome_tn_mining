@@ -12,8 +12,10 @@
 import os
 import sys
 import time
+import gzip
 import argparse
 import subprocess
+from Bio import SeqIO
 
 def HowManyTime(tbegin, tend):
     """
@@ -117,7 +119,7 @@ def parse_seqid2assid(genome_files):
     seqid2assid_dict = {}
     assembly_id = os.path.basename(genome_files).split('.')[0]
 
-    with open(genome_files, "r") as file:
+    with gzip.open(genome_files, 'rt') as file:
         for line in file:
             if line.startswith(">"):
                 seqid2assid_dict[line.split()[0][1:]] = assembly_id
@@ -134,7 +136,8 @@ def add_genome_name(fasta_file,name2id_dict,seqid2assid_dict,output_file):
                     seqid = line.split(":")[0][1:]
                     seqloci = line.split(":")[1].strip()
                     try:
-                        line = f">{seqid}:{seqloci}:{name2id_dict[seqid2assid_dict[seqid]]}\n"
+                        assembly_id = seqid2assid_dict[seqid]
+                        line = f">{seqid}:{seqloci} {assembly_id} {name2id_dict[assembly_id]}\n"
                     except Exception as e:
                         errid_list.append(line[1:])
                 except Exception as e:
@@ -192,23 +195,22 @@ def main():
 
     print('\n\n----------Step 3----------')
     print("Sorting and merging BED file")
-    bed_sorted_file = os.path.join(tmp_dir, f"{output_prefix}.sort.bed")
-    command = f'sort -k1,1 -k2,2n {bed} > {bed_sorted_file} '
-    print(command)
-    run_cmd(command)
-
     bed_merge_file = os.path.join(tmp_dir, f"{output_prefix}.sort.merge.bed")
-    command = f'bedtools merge -i {bed_sorted_file} -c 6,6,6 -o count,count,distinct > {bed_merge_file}'
+    total_dde_lens = [len(rec) for rec in SeqIO.parse(query, "fasta")]
+    avg_dde_len = int((sum(total_dde_lens) / len(total_dde_lens)) * 3)
+    #print(f"avg_dde_len:{avg_dde_len}")
+    command = f'sort -k1,1 -k2,2n {bed} | bedtools merge -d {avg_dde_len} -i /dev/stdin -c 6,6,6 -o count,count,distinct -s > {bed_merge_file}'
     print(command)
     run_cmd(command)
 
     print('\n\n----------Step 4----------')
-    genome_file = f'{blastdb}.fna'
+    genome_file = f'{blastdb}.fna.gz'
     get_chr_len(genome_file)
 
     print("Extending flanking sequence and removing redundancy")
     bed_slop_file = os.path.join(tmp_dir, f"{output_prefix}.sort.merge.L{args.left_len}.R{args.right_len}.uniq.bed")
-    command = f'bedtools slop -s -l {args.left_len} -r {args.right_len} -g {genome_file}.len -i {bed_merge_file} | uniq > {bed_slop_file}'
+    #command = f'bedtools slop -s -l {args.left_len} -r {args.right_len} -g {genome_file}.len -i {bed_merge_file} | sort -k1,1 -k2,2n | bedtools merge -i /dev/stdin -c 6,6,6 -o count,count,distinct -s | uniq > {bed_slop_file}'
+    command = f'bedtools slop -s -l {args.left_len} -r {args.right_len} -g {genome_file}.len -i {bed_merge_file} > {bed_slop_file}'
     print(command)
     run_cmd(command)
 
