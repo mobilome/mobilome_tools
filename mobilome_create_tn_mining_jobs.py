@@ -64,9 +64,9 @@ if [ ! -f "$GENOME_FILE" ]; then
 fi
 
 #运行mobilome_tn_mining
-echo mobilome_tn_mining -query {Path(args.dde).resolve()} -db ${{GENOME_FILE%.fna.gz}} -name_id {Path(path,'name2id.txt').resolve()}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num {args.num_threads} -tblastn_option {args.blast_options} > $LOGDIR/$(basename "$GENOME_FILE" .fna).log
+echo "mobilome_tn_mining -query {Path(args.dde).resolve()} -db ${{GENOME_FILE%.fna.gz}} -name_id {Path(path,'name2id.txt').resolve()} -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna.gz).fasta -num_threads {args.num_threads} -tblastn_option {args.blast_options} > $LOGDIR/$(basename "$GENOME_FILE" .fna.gz).log" > $LOGDIR/$(basename "$GENOME_FILE" .fna.gz).log
 
-mobilome_tn_mining -query {Path(args.dde).resolve()} -db ${{GENOME_FILE%.fna.gz}} -name_id {Path(path,'name2id.txt').resolve()}  -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna).fasta -num {args.num_threads} -tblastn_option {args.blast_options} >> $LOGDIR/$(basename "$GENOME_FILE" .fna).log
+mobilome_tn_mining -query {Path(args.dde).resolve()} -db ${{GENOME_FILE%.fna.gz}} -name_id {Path(path,'name2id.txt').resolve()} -tmp_dir $TMPDIR -left_len {args.left_len} -right_len {args.right_len} -out $FASTADIR/$(basename "$GENOME_FILE" .fna.gz).fasta -num_threads {args.num_threads} -tblastn_option {args.blast_options} >> $LOGDIR/$(basename "$GENOME_FILE" .fna.gz).log
 """
 
     # 将内容写入文件

@@ -317,7 +317,27 @@ def get_namemap(clusters_dir, output_dir):
     #     SeqIO.write(rec, output_file, "fasta")
     # pass
 
+def run_tirvish(cluster_cons_split_dir, clusters_dir, output_dir, processes):
 
+    tirvish_tmp_dir = Path(output_dir, 'tmp', 'trivish_tmp')
+    tirvish_tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    mafft_out_dir = Path(fasta_dir).parent / f'mafft_{Path(fasta_dir).name}'
+    mafft_out_dir.mkdir(parents=True, exist_ok=True)
+
+    cmd = (
+        f"find {fasta_dir} -maxdepth 1 -type f -name '*.fasta' | "
+        f"parallel -j {processes} --bar "
+        f"'mafft --auto --quiet {{}} > {mafft_out_dir}/$(basename {{}} .fasta).aln'"
+    )
+
+    print(cmd)
+    print(f"run mafft...")
+
+    run_cmd(cmd)
+
+    mkdir -p tirvish/index && ls cluster-rename | xargs -I {} echo "gt suffixerator -db cluster-rename/{} -indexname tirvish/index/{} -tis -suf -lcp -des -ssp -sds -dna -mirrored" | parallel -j 40 --bar
+    pass
 
 def main():
     parser = argparse.ArgumentParser(
@@ -375,11 +395,14 @@ def main():
     bed_slop_dir = bed_slop(bed_dir, seq_len_dir, args.flank_length, output_dir, args.processes)
 
     clusters_trim_fasta_dir = get_clusters_trim_fasta(bed_dir, args.clusters, namemap_dir, output_dir, args.processes)
-    namemap = get_namemap(args.clusters, output_dir)
-    extend_clusters_flanking_regions(clusters_trim_fasta_dir, namemap, output_dir, args.processes)
+
+
+    # namemap = get_namemap(args.clusters, output_dir)
+    # extend_clusters_flanking_regions(clusters_trim_fasta_dir, namemap, output_dir, args.processes)
     #run_mafft_parallel(clusters_trim_fasta_dir, args.processes)
     #clusters_trim_slop_fasta_dir = get_clusters_trim_slop_fasta(bed_slop_dir, args.clusters, namemap_dir, output_dir, args.processes)
     #run_mafft_parallel(clusters_trim_slop_fasta_dir, args.processes)
+
 
 if __name__ == '__main__':
     main()
